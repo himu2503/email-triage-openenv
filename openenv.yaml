@@ -1,0 +1,120 @@
+name: email-triage-env
+version: "1.0.0"
+description: >
+  An OpenEnv-compliant environment for training and evaluating AI agents on
+  real-world email triage: classification, routing, prioritization, and reply drafting.
+
+author: openenv-submission
+tags:
+  - openenv
+  - email
+  - triage
+  - nlp
+  - classification
+  - real-world
+
+domain: business-productivity
+
+tasks:
+  - id: easy
+    description: "Classify 3 clearly labeled emails (spam, urgent, billing)"
+    difficulty: easy
+    total_steps: 3
+    reward_components:
+      - label: 1.0
+    expected_baseline_score: 0.8
+
+  - id: medium
+    description: "Classify, route, and prioritize 5 ambiguous emails"
+    difficulty: medium
+    total_steps: 5
+    reward_components:
+      - label: 0.5
+      - action_type: 0.3
+      - priority: 0.2
+    expected_baseline_score: 0.55
+
+  - id: hard
+    description: "Classify, route, prioritize, and draft replies for 8 complex emails"
+    difficulty: hard
+    total_steps: 8
+    reward_components:
+      - label: 0.3
+      - action_type: 0.25
+      - priority: 0.15
+      - reply_quality: 0.3
+    expected_baseline_score: 0.40
+
+api:
+  reset:
+    method: POST
+    path: /reset
+    body:
+      task_id: string  # "easy" | "medium" | "hard"
+    returns: Observation
+
+  step:
+    method: POST
+    path: /step
+    body:
+      action_type: string
+      label: string
+      priority: string
+      reply_text: string (optional)
+      confidence: float
+    returns:
+      observation: Observation
+      reward: Reward
+      done: boolean
+      info: object
+
+  state:
+    method: GET
+    path: /state
+    returns: StateDict
+
+observation_space:
+  email_id: string
+  subject: string
+  body: string
+  sender: string
+  timestamp: string
+  thread_history: list[dict]
+  inbox_size: integer
+  step_number: integer
+  task_id: string
+  task_description: string
+
+action_space:
+  action_type:
+    type: categorical
+    values: [classify, archive, escalate, reply, delete]
+  label:
+    type: categorical
+    values: [urgent, spam, billing, hr, it_support, inquiry, newsletter, internal, other]
+  priority:
+    type: categorical
+    values: [high, medium, low]
+  reply_text:
+    type: string
+    optional: true
+  confidence:
+    type: float
+    range: [0.0, 1.0]
+
+reward_space:
+  type: float
+  range: [0.0, 1.0]
+  shaped: true
+  partial_credit: true
+
+runtime:
+  port: 7860
+  framework: fastapi
+  python: "3.11"
+
+hf_space:
+  sdk: docker
+  tags:
+    - openenv
+    - email-triage
