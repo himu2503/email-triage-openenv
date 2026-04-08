@@ -22,7 +22,7 @@ dependencies = [
 
 # ✅ REQUIRED for OpenEnv validator
 [project.scripts]
-start = "server.app:main"
+server = "server.app:main"
 
 # ✅ Tell setuptools about your modules
 [tool.setuptools]
