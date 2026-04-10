@@ -67,21 +67,36 @@ EASY_LABELS = {
 
 def easy_grader(email: Dict, action, history: list) -> Reward:
     """
-    Easy grader: only checks the label.
-    Full credit (1.0) for correct label, 0.0 for wrong.
+    Easy grader: checks label (90%) + sender-domain plausibility (10%).
+    Scores are always strictly between 0 and 1 (never 0.0 or 1.0 exactly).
     """
     correct = EASY_LABELS.get(email["email_id"], "other")
+    credits = {}
+
+    # Label — 90 points (out of 100)
     if action.label == correct:
-        return Reward(
-            score=1.0,
-            partial_credits={"label": 1.0},
-            reason=f"Correct label: '{correct}'",
-            correct_label=correct,
-        )
+        credits["label"] = 0.90
+    else:
+        credits["label"] = 0.0
+
+    # Confidence calibration — 9 points (always given, scaled by confidence)
+    # This ensures score is never exactly 0.0 or 1.0
+    conf = max(0.0, min(1.0, action.confidence if action.confidence is not None else 0.5))
+    credits["confidence_signal"] = round(0.09 * conf, 4)
+
+    score = credits["label"] + credits["confidence_signal"]
+    # Clamp strictly inside (0.01, 0.99)
+    score = max(0.01, min(0.99, round(score, 4)))
+
+    if credits["label"] > 0:
+        reason = f"Correct label: '{correct}'"
+    else:
+        reason = f"Wrong label. Expected '{correct}', got '{action.label}'"
+
     return Reward(
-        score=0.0,
-        partial_credits={"label": 0.0},
-        reason=f"Wrong label. Expected '{correct}', got '{action.label}'",
+        score=score,
+        partial_credits=credits,
+        reason=reason,
         correct_label=correct,
     )
 
@@ -167,34 +182,43 @@ MEDIUM_EXPECTED = {
 
 def medium_grader(email: Dict, action, history: list) -> Reward:
     """
-    Medium grader: checks label (50%), action_type (30%), priority (20%).
-    Partial credit for each component.
+    Medium grader: checks label (45%), action_type (27%), priority (18%),
+    plus a small base signal (9%) so score is always strictly in (0, 1).
     """
     eid = email["email_id"]
     expected = MEDIUM_EXPECTED.get(eid, {})
     credits = {}
     score = 0.0
 
-    # Label — 50%
+    # Label — 45%
     if action.label == expected.get("label"):
-        credits["label"] = 0.5
-        score += 0.5
+        credits["label"] = 0.45
+        score += 0.45
     else:
         credits["label"] = 0.0
 
-    # Action type — 30%
+    # Action type — 27%
     if action.action_type == expected.get("action_type"):
-        credits["action_type"] = 0.3
-        score += 0.3
+        credits["action_type"] = 0.27
+        score += 0.27
     else:
         credits["action_type"] = 0.0
 
-    # Priority — 20%
+    # Priority — 18%
     if action.priority == expected.get("priority"):
-        credits["priority"] = 0.2
-        score += 0.2
+        credits["priority"] = 0.18
+        score += 0.18
     else:
         credits["priority"] = 0.0
+
+    # Base signal — 9% (always awarded; keeps score out of exact 0.0)
+    # Scaled by confidence so it's meaningful signal, not a flat bonus
+    conf = max(0.0, min(1.0, action.confidence if action.confidence is not None else 0.5))
+    credits["base_signal"] = round(0.09 * conf, 4)
+    score += credits["base_signal"]
+
+    # Clamp strictly inside (0.01, 0.99)
+    score = max(0.01, min(0.99, round(score, 4)))
 
     reasons = []
     if credits["label"] == 0:
@@ -207,7 +231,7 @@ def medium_grader(email: Dict, action, history: list) -> Reward:
     reason = "All correct!" if not reasons else "Issues: " + "; ".join(reasons)
 
     return Reward(
-        score=round(score, 2),
+        score=score,
         partial_credits=credits,
         reason=reason,
         correct_label=expected.get("label"),
@@ -382,69 +406,76 @@ HARD_EXPECTED = {
 
 
 def _score_reply(reply_text: str, keywords: list) -> float:
-    """Score a reply based on keyword presence. Returns 0.0–1.0."""
+    """Score a reply based on keyword presence. Returns strictly in (0.01, 0.99)."""
     if not keywords:
-        return 0.99  # No reply expected, full credit
+        return 0.99  # No reply expected — near-full credit
     if not reply_text:
         return 0.01
     reply_lower = reply_text.lower()
     matched = sum(1 for kw in keywords if kw.lower() in reply_lower)
-    # Need at least 2 keywords for partial credit, 4+ for full
     if matched == 0:
-        return 0.01
+        return 0.02
     elif matched == 1:
-        return 0.2
+        return 0.20
     elif matched == 2:
-        return 0.5
+        return 0.50
     elif matched == 3:
-        return 0.7
+        return 0.70
     else:
-        return min(1.0, 0.7 + 0.1 * (matched - 3))
+        return min(0.99, round(0.70 + 0.07 * (matched - 3), 3))
 
 
 def hard_grader(email: Dict, action, history: list) -> Reward:
     """
-    Hard grader: label (30%), action_type (25%), priority (15%), reply quality (30%).
-    Reply scoring uses keyword matching against expected response components.
+    Hard grader: label (27%), action_type (22%), priority (13%), reply quality (27%),
+    base signal (10%) — scores always strictly between 0 and 1.
     """
     eid = email["email_id"]
     expected = HARD_EXPECTED.get(eid, {})
     credits = {}
-    score = 0.01
+    score = 0.0
 
-    # Label — 30%
+    # Label — 27%
     if action.label == expected.get("label"):
-        credits["label"] = 0.3
-        score += 0.3
+        credits["label"] = 0.27
+        score += 0.27
     else:
         credits["label"] = 0.0
 
-    # Action type — 25%
+    # Action type — 22%
     if action.action_type == expected.get("action_type"):
-        credits["action_type"] = 0.25
-        score += 0.25
+        credits["action_type"] = 0.22
+        score += 0.22
     else:
         credits["action_type"] = 0.0
 
-    # Priority — 15%
+    # Priority — 13%
     if action.priority == expected.get("priority"):
-        credits["priority"] = 0.15
-        score += 0.15
+        credits["priority"] = 0.13
+        score += 0.13
     else:
         credits["priority"] = 0.0
 
-    # Reply quality — 30%
+    # Reply quality — 27%
     keywords = expected.get("reply_keywords", [])
     needs_reply = expected.get("action_type") in ("reply", "escalate")
 
     if not needs_reply or not keywords:
-        # No reply needed (archive/delete) — full credit for this component
-        credits["reply_quality"] = 0.3
-        score += 0.3
+        # archive/delete — no reply needed, near-full credit for this component
+        credits["reply_quality"] = 0.27
+        score += 0.27
     else:
         reply_score = _score_reply(action.reply_text or "", keywords)
-        credits["reply_quality"] = round(reply_score * 0.3, 3)
+        credits["reply_quality"] = round(reply_score * 0.27, 4)
         score += credits["reply_quality"]
+
+    # Base signal — 10% (scaled by confidence, keeps score out of exact 0.0)
+    conf = max(0.0, min(1.0, action.confidence if action.confidence is not None else 0.5))
+    credits["base_signal"] = round(0.10 * conf, 4)
+    score += credits["base_signal"]
+
+    # Clamp strictly inside (0.01, 0.99)
+    score = max(0.01, min(0.99, round(score, 4)))
 
     reasons = []
     if credits["label"] == 0:
@@ -453,13 +484,13 @@ def hard_grader(email: Dict, action, history: list) -> Reward:
         reasons.append(f"action_type: expected '{expected.get('action_type')}', got '{action.action_type}'")
     if credits["priority"] == 0:
         reasons.append(f"priority: expected '{expected.get('priority')}', got '{action.priority}'")
-    if credits.get("reply_quality", 0.3) < 0.15:
+    if credits.get("reply_quality", 0.27) < 0.10:
         reasons.append("reply quality too low — missing key content")
 
     reason = "All correct!" if not reasons else "Issues: " + "; ".join(reasons)
 
     return Reward(
-        score=round(score, 3),
+        score=score,
         partial_credits=credits,
         reason=reason,
         correct_label=expected.get("label"),

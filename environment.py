@@ -169,19 +169,19 @@ class EmailTriageEnv:
         # Penalize missing label
         if not action.label:
             penalty = -0.1
-            score = max(0.0, score + penalty)
+            score = max(0.01, score + penalty)
             partial["missing_label_penalty"] = penalty
 
         # Penalize excessively long replies (>1000 chars suggests padding)
         if action.reply_text and len(action.reply_text) > 1000:
             penalty = -0.05
-            score = max(0.0, score + penalty)
+            score = max(0.01, score + penalty)
             partial["verbose_reply_penalty"] = penalty
 
         # Small bonus if agent has high confidence AND is correct
         if action.confidence >= 0.9 and reward.score >= 0.8:
             bonus = 0.05
-            score = min(1.0, score + bonus)
+            score = min(0.99, score + bonus)
             partial["high_confidence_correct_bonus"] = bonus
 
         return Reward(

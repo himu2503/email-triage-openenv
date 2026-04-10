@@ -103,9 +103,9 @@ class Reward(BaseModel):
     """
     score: float = Field(
         ...,
-        ge=0.0,
-        le=1.0,
-        description="Overall reward for this step (0.0–1.0)"
+        gt=0.0,
+        lt=1.0,
+        description="Overall reward for this step — strictly between 0 and 1 (exclusive)"
     )
     partial_credits: Dict[str, float] = Field(
         default_factory=dict,
