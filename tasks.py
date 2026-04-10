@@ -384,14 +384,14 @@ HARD_EXPECTED = {
 def _score_reply(reply_text: str, keywords: list) -> float:
     """Score a reply based on keyword presence. Returns 0.0–1.0."""
     if not keywords:
-        return 1.0  # No reply expected, full credit
+        return 0.99  # No reply expected, full credit
     if not reply_text:
-        return 0.0
+        return 0.01
     reply_lower = reply_text.lower()
     matched = sum(1 for kw in keywords if kw.lower() in reply_lower)
     # Need at least 2 keywords for partial credit, 4+ for full
     if matched == 0:
-        return 0.0
+        return 0.01
     elif matched == 1:
         return 0.2
     elif matched == 2:
@@ -410,7 +410,7 @@ def hard_grader(email: Dict, action, history: list) -> Reward:
     eid = email["email_id"]
     expected = HARD_EXPECTED.get(eid, {})
     credits = {}
-    score = 0.0
+    score = 0.01
 
     # Label — 30%
     if action.label == expected.get("label"):
